@@ -45,11 +45,11 @@ export function buildAdapters(env: Env): ChainAdapter[] {
  * Executa um ciclo completo de processamento.
  * @returns Resumo para `/status` e logs.
  */
-export async function runCycle(env: Env): Promise<{ chain: string; newQueries: number; dispatched: number; failed: number; checkpoint: string }[]> {
+export async function runCycle(env: Env): Promise<{ chain: string; newQueries: number; dispatched: number; failed: number; checkpoint: string; lastError: string }[]> {
   const adapters = buildAdapters(env);
   const summary = [];
   for (const adapter of adapters) {
-    const counters = { chain: adapter.id, newQueries: 0, dispatched: 0, failed: 0, checkpoint: "0" };
+    const counters = { chain: adapter.id, newQueries: 0, dispatched: 0, failed: 0, checkpoint: "0", lastError: "" };
     try {
       const checkpoint = await getCheckpoint(stateStore(env), adapter.id);
       const { queries, newCheckpoint } = await adapter.fetchPending(env, checkpoint);
@@ -72,6 +72,7 @@ export async function runCycle(env: Env): Promise<{ chain: string; newQueries: n
       }
     } catch (err) {
       counters.failed++;
+      counters.lastError = (err as Error).message.slice(0, 200);
       logger.error(FILE, "falha no ciclo da chain", { chain: adapter.id, error: (err as Error).message });
     }
     summary.push(counters);

@@ -68,6 +68,23 @@ export default {
           next_step: "Aguarde o próximo tick do cron (1min) ou verifique logs com `npx wrangler tail`.",
         });
       }
+      // Execução manual do ciclo — somente diagnóstico, exige DEBUG_TOKEN.
+      if (url.pathname === "/run") {
+        const token = url.searchParams.get("token") ?? "";
+        if (!env.DEBUG_TOKEN || token !== env.DEBUG_TOKEN) {
+          return respond(
+            { code: "UNAUTHORIZED", message: "token de diagnóstico ausente ou inválido", details: {}, next_step: "Passe ?token= igual ao secret DEBUG_TOKEN." },
+            401
+          );
+        }
+        const summary = await runCycle(env);
+        return respond({
+          code: "OK",
+          message: "ciclo executado manualmente",
+          details: { summary },
+          next_step: "Consulte /status para checkpoints atualizados.",
+        });
+      }
       return respond(
         {
           code: "NOT_FOUND",

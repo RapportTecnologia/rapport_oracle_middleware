@@ -49,4 +49,6 @@ export interface Env {
   ORACLE_POLL_MAX_BLOCK_RANGE?: string;
   HTTP_FETCH_MAX_BYTES?: string;
   HTTP_FETCH_TIMEOUT_MS?: string;
+  /** Token do endpoint de diagnóstico `/run` (secret, nunca em vars). */
+  DEBUG_TOKEN?: string;
 }

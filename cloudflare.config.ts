@@ -20,7 +20,8 @@ const config = {
   kv_namespaces: [
     {
       binding: "ORACLE_STATE",
-      // `id` provisionado no primeiro `cf deploy` — ver docs/runbook-deploy.md
+      // Namespace "rapport_oracle" provisionado no dashboard (token sem escopo KV).
+      id: "9972eb49b5c1450d921c29565c768d0f",
     },
   ],
   observability: {
