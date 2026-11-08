@@ -10,10 +10,39 @@ Worker Cloudflare que intermedeia requisições de oracle entre smart contracts
 
 Em construção — consulte `docs/` para arquitetura e runbook de deploy.
 
+## Apoie o Projeto — Doação via Pix
+
+O Rapport Oracle é mantido de forma independente. Se o projeto é útil para
+você, apoie com uma doação via Pix a título de retribuição e incentivo:
+**todo o valor obtido é utilizado para manter as APIs de resposta e custear
+os servidores**.
+
+<p align="center">
+  <img src="docs/assets/pix-doacao-qrcode.png" alt="QR Code Pix — Doação Rapport Oracle" width="240" />
+</p>
+
+- **Chave Pix (CNPJ):** `67.904.299/0001-80`
+- **Recebedor:** Rapport Tecnologia
+- **Mensagem embutida no QR:** `DOACAO APIS E SERVIDORES RAPPORT ORACLE`
+- Valor livre — também é possível doar usando a chave Pix diretamente no
+  app do seu banco.
+
+<details>
+<summary>Pix copia e cola</summary>
+
+```
+00020101021126790014br.gov.bcb.pix0114679042990001800239DOACAO APIS E SERVIDORES RAPPORT ORACLE5204000053039865802BR5918RAPPORT TECNOLOGIA6009FORTALEZA62230519DOACAORAPPORTORACLE63044FBA
+```
+
+</details>
+
+O QR Code é gerado por `scripts/generate_pix_qrcode.py` (raiz do monorepo).
+
 ## Changelog
 
 | Data | Versão | Descrição |
 |---|---|---|
 | 2026-11-07 | 0.1.0 | Estrutura inicial do subprojeto |
+| 2026-11-08 | 0.1.1 | Seção de doação via Pix com QR Code |
 
 ![footer](https://capsule-render.vercel.app/api?type=waving&color=gradient&height=100&section=footer&animation=twinkling)

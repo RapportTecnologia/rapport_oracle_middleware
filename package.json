@@ -1,0 +1,31 @@
+{
+  "name": "rapport-oracle-middleware",
+  "version": "0.1.0",
+  "description": "Worker Cloudflare do Rapport Oracle - intermediario de requisicoes entre smart contracts e fontes de dados externas",
+  "private": true,
+  "license": "CC-BY-SA-4.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "cf dev",
+    "deploy": "cf deploy",
+    "tail": "npx wrangler tail rapport-oracle-middleware",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "types": "cf types"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "@stellar/stellar-sdk": "^14.0.0",
+    "tweetnacl": "^1.0.3",
+    "viem": "^2.23.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "cf": "latest",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
