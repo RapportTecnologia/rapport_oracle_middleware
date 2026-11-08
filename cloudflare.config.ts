@@ -8,7 +8,8 @@
  * @author Carlos Delfino <consultoria@carlosdelfino.eti.br>
  */
 const config = {
-  name: "rapport-oracle-middleware",
+  // Nome deve casar com o escopo do API token restrito ("midleware" sem o 2º 'd').
+  name: "rapport-oracle-midleware",
   main: "src/index.ts",
   compatibility_date: "2026-11-08",
   // Cron: granularidade mínima de 1 minuto no Workers — o `delay` da query é

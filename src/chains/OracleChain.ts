@@ -32,7 +32,7 @@ export interface ChainAdapter {
 
 /** Variáveis de ambiente esperadas pelo Worker (bindings + vars + secrets). */
 export interface Env {
-  ORACLE_STATE: KVNamespace;
+  ORACLE_STATE?: KVNamespace;
   CHAINS_ENABLED?: string;
   EVM_CHAIN_ID?: string;
   EVM_RAPPORT_ORACLE_ADDRESS?: string;
