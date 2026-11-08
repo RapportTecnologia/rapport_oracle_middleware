@@ -1,0 +1,26 @@
+EVM_RELAYER_PRIVATE_KEY=<preencher>
+EVM_RELAYER_ADDRESS=<preencher>
+POLYGON_AMOY_RPC_URL=https://rpc-amoy.polygon.technology
+POLYGON_AMOY_RPC_URL_FALLBACK=https://polygon-amoy-bor-rpc.publicnode.com
+POLYGON_RPC_URL=https://polygon-rpc.com
+POLYGONSCAN_API_KEY=<polygonscan-api-key>
+SOLANA_RELAYER_SECRET_KEY=<preencher>
+SOLANA_RELAYER_ADDRESS=<preencher>
+SOLANA_RPC_URL=https://api.devnet.solana.com
+STELLAR_RELAYER_SECRET=<preencher>
+STELLAR_RELAYER_ADDRESS=<preencher>
+STELLAR_RPC_URL=https://soroban-testnet.stellar.org
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+EVM_RAPPORT_ORACLE_ADDRESS=<preencher>
+SOLANA_RAPPORT_ORACLE_PROGRAM_ID=
+STELLAR_RAPPORT_ORACLE_CONTRACT_ID=
+CLOUDFLARE_API_TOKEN=<preencher>
+CLOUDFLARE_ACCOUNT_ID=<cloudflare-account-id>
+
+# Chain IDs / redes habilitadas
+CHAINS_ENABLED=evm
+EVM_CHAIN_ID=80002
+ORACLE_POLL_MAX_BLOCK_RANGE=5000
+HTTP_FETCH_MAX_BYTES=1048576
+HTTP_FETCH_TIMEOUT_MS=15000
