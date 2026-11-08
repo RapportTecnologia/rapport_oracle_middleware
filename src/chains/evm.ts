@@ -9,6 +9,7 @@
 import {
   createPublicClient,
   createWalletClient,
+  fallback,
   http,
   parseAbiItem,
   type Abi,
@@ -57,6 +58,7 @@ export function createEvmAdapter(env: Env): ChainAdapter | null {
   const connector = env.EVM_RAPPORT_ORACLE_ADDRESS as Address | undefined;
   const relayerKey = env.EVM_RELAYER_PRIVATE_KEY as Hex | undefined;
   const rpc = env.POLYGON_AMOY_RPC_URL;
+  const rpcFallback = env.POLYGON_AMOY_RPC_URL_FALLBACK;
   if (!connector || !relayerKey || !rpc) {
     logger.warn(FILE, "adapter EVM desabilitado — config ausente", {
       connector: !!connector,
@@ -67,9 +69,11 @@ export function createEvmAdapter(env: Env): ChainAdapter | null {
   }
   const id = `evm:${chainId}`;
   const chain = viemChain(chainId);
-  const publicClient = createPublicClient({ chain, transport: http(rpc) });
+  // Fallback automático: drpc free rejeita eth_getLogs — o publicnode assume.
+  const transports = rpcFallback ? fallback([http(rpc), http(rpcFallback)]) : http(rpc);
+  const publicClient = createPublicClient({ chain, transport: transports });
   const account = privateKeyToAccount(relayerKey);
-  const walletClient = createWalletClient({ account, chain, transport: http(rpc) });
+  const walletClient = createWalletClient({ account, chain, transport: transports });
   const maxRange = BigInt(env.ORACLE_POLL_MAX_BLOCK_RANGE ?? "5000");
 
   return {
