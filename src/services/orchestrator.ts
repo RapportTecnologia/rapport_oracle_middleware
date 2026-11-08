@@ -18,6 +18,7 @@ import {
   markProcessed,
   putPending,
   listPending,
+  stateStore,
   type PendingQuery,
 } from "./state";
 import { logger } from "../utils/logger";
@@ -50,18 +51,18 @@ export async function runCycle(env: Env): Promise<{ chain: string; newQueries: n
   for (const adapter of adapters) {
     const counters = { chain: adapter.id, newQueries: 0, dispatched: 0, failed: 0, checkpoint: "0" };
     try {
-      const checkpoint = await getCheckpoint(env.ORACLE_STATE, adapter.id);
+      const checkpoint = await getCheckpoint(stateStore(env), adapter.id);
       const { queries, newCheckpoint } = await adapter.fetchPending(env, checkpoint);
       counters.checkpoint = newCheckpoint.toString();
       for (const q of queries) {
-        if (await isProcessed(env.ORACLE_STATE, adapter.id, q.queryId)) continue;
+        if (await isProcessed(stateStore(env), adapter.id, q.queryId)) continue;
         counters.newQueries++;
-        await putPending(env.ORACLE_STATE, q);
+        await putPending(stateStore(env), q);
       }
-      await setCheckpoint(env.ORACLE_STATE, adapter.id, newCheckpoint);
+      await setCheckpoint(stateStore(env), adapter.id, newCheckpoint);
 
       // processa pendentes (novas + agendadas anteriores vencidas)
-      const pendings = await listPending(env.ORACLE_STATE, adapter.id);
+      const pendings = await listPending(stateStore(env), adapter.id);
       const now = Math.floor(Date.now() / 1000);
       for (const q of pendings) {
         if (q.executeAfter > now) continue;
@@ -86,14 +87,14 @@ async function dispatchOne(env: Env, adapter: ChainAdapter, q: PendingQuery): Pr
   try {
     const result = await resolveQuery(q.datasource, q.args[0], env);
     const tx = await adapter.sendCallback(env, q, result);
-    await markProcessed(env.ORACLE_STATE, q.chain, q.queryId, true, attempts);
+    await markProcessed(stateStore(env), q.chain, q.queryId, true, attempts);
     await adapter.markComplete?.(env, q);
     logger.info(FILE, "query despachada", { chain: q.chain, queryId: q.queryId.slice(0, 18), tx, attempts });
     return true;
   } catch (err) {
-    await markProcessed(env.ORACLE_STATE, q.chain, q.queryId, false, attempts);
+    await markProcessed(stateStore(env), q.chain, q.queryId, false, attempts);
     if (attempts < 3) {
-      await putPending(env.ORACLE_STATE, { ...q, attempts });
+      await putPending(stateStore(env), { ...q, attempts });
     } else {
       await adapter.markFailed?.(env, q);
     }

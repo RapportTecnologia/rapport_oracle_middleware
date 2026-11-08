@@ -8,7 +8,7 @@
  */
 import type { Env } from "./chains/OracleChain";
 import { runCycle } from "./services/orchestrator";
-import { listPending, getCheckpoint } from "./services/state";
+import { listPending, getCheckpoint, stateStore } from "./services/state";
 import { buildAdapters } from "./services/orchestrator";
 import { logger } from "./utils/logger";
 
@@ -57,8 +57,8 @@ export default {
         for (const a of adapters) {
           chains.push({
             chain: a.id,
-            checkpoint: (await getCheckpoint(env.ORACLE_STATE, a.id)).toString(),
-            pending: (await listPending(env.ORACLE_STATE, a.id)).length,
+            checkpoint: (await getCheckpoint(stateStore(env), a.id)).toString(),
+            pending: (await listPending(stateStore(env), a.id)).length,
           });
         }
         return respond({

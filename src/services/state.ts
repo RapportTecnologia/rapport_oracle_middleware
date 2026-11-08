@@ -28,6 +28,54 @@ export interface PendingQuery {
 
 const MAX_ATTEMPTS = 3;
 
+/**
+ * KV em memória — fallback de testnet quando o binding `ORACLE_STATE` não está
+ * provisionado (token sem escopo de KV). Persistência limitada ao tempo de vida
+ * do isolate; não usar em produção (ver docs/runbook-deploy.md).
+ */
+class MemoryKV {
+  private store = new Map<string, { v: string; exp: number }>();
+
+  private alive(k: string): boolean {
+    const e = this.store.get(k);
+    if (e && e.exp > 0 && e.exp < Date.now()) { this.store.delete(k); return false; }
+    return !!e;
+  }
+
+  async get(key: string): Promise<string | null> {
+    return this.alive(key) ? this.store.get(key)!.v : null;
+  }
+
+  async put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> {
+    this.store.set(key, { v: value, exp: opts?.expirationTtl ? Date.now() + opts.expirationTtl * 1000 : 0 });
+  }
+
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  async list(opts?: { prefix?: string; cursor?: string }): Promise<KVNamespaceListResult<unknown>> {
+    const keys = [...this.store.keys()].filter((k) => this.alive(k) && (!opts?.prefix || k.startsWith(opts.prefix)));
+    return { keys: keys.map((name) => ({ name })), list_complete: true, cacheStatus: null } as unknown as KVNamespaceListResult<unknown>;
+  }
+}
+
+const memoryState = new MemoryKV();
+let memWarned = false;
+
+/**
+ * Retorna o store efetivo: KV `ORACLE_STATE` quando o binding existe,
+ * `MemoryKV` (por isolate) como fallback. Loga warning uma única vez.
+ */
+export function stateStore(env: { ORACLE_STATE?: KVNamespace }): KVNamespace {
+  if (env.ORACLE_STATE) return env.ORACLE_STATE;
+  if (!memWarned) {
+    memWarned = true;
+    console.warn(JSON.stringify({ level: "warn", msg: "ORACLE_STATE binding ausente — usando MemoryKV por isolate (somente testnet)", component: "stateStore" }));
+  }
+  return memoryState as unknown as KVNamespace;
+}
+
 export function checkpointKey(chain: string): string {
   return `${chain}:checkpoint`;
 }
