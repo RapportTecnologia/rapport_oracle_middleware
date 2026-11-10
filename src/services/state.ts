@@ -1,10 +1,15 @@
 /**
  * Estado persistente do middleware em Workers KV (`ORACLE_STATE`).
  *
- * @file Chaves:
- *         `{chain}:checkpoint`        → último bloco/ledger/signature processado
- *         `{chain}:processed:{qid}`   → "done" | "failed:{attempts}"
- *         `pending:{chain}:{qid}`     → JSON de query aguardando execute_after
+ * @file Layout de chaves otimizado para o plano Free (1k writes/deletes/lists
+ *       por dia — ver issue #10):
+ *         `state:{chain}`           → documento coalescido `{ checkpoint, pending }`
+ *         `{chain}:checkpoint`      → legado (somente leitura de migração)
+ *         `{chain}:processed:{qid}` → "done" | "failed:{attempts}" (dedupe TTL)
+ *       Um tick faz 1 leitura por chain e 1 escrita apenas quando o documento
+ *       muda — ou, sem mudança de pending, a cada `CHECKPOINT_PERSIST_INTERVAL_MS`
+ *       para registrar o checkpoint avançado. Nenhuma operação `list`/`delete`
+ *       é usada no hot path.
  * @author Carlos Delfino <consultoria@carlosdelfino.eti.br>
  */
 
@@ -26,7 +31,48 @@ export interface PendingQuery {
   attempts: number;
 }
 
+/**
+ * Documento coalescido por chain, persistido em `state:{chain}`.
+ * Agrupa checkpoint e pendências para eliminar `list()` e reads por chave.
+ */
+export interface ChainState {
+  /** Último bloco/ledger/signature processado (string: seguro para bigint). */
+  checkpoint: string;
+  /** Queries aguardando `executeAfter` ou retry, indexadas por `queryId`. */
+  pending: Record<string, PendingQuery>;
+}
+
+/**
+ * Documento carregado em um tick — `state` é mutável em memória e
+ * `flushChainState` decide ao fim do tick se vale uma escrita KV.
+ */
+export interface LoadedChainState {
+  /** Documento mutável deste tick (checkpoint + pendentes). */
+  state: ChainState;
+  /** Checkpoint efetivo: máximo entre o persistido e o high-water do isolate. */
+  checkpoint: bigint;
+  /** Checkpoint lido do KV neste load — base da decisão de persistência. */
+  persistedCheckpoint: bigint;
+  /** `true` quando `state` mudou e merece escrita imediata no flush. */
+  dirty: boolean;
+}
+
 const MAX_ATTEMPTS = 3;
+
+/**
+ * Intervalo mínimo entre escritas de checkpoint quando nada mais mudou.
+ * 15 min → ~96 writes/dia/chain em idle, dentro do limite Free (1.000/dia).
+ * Em cold start o tick seguinte reescaneia a partir do último checkpoint
+ * persistido — seguro porque `isProcessed` deduplica e o range de polling é
+ * limitado por `ORACLE_POLL_MAX_BLOCK_RANGE`.
+ */
+export const CHECKPOINT_PERSIST_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Idade máxima de uma pendência (7d) — substitui o `expirationTtl` por chave
+ * do layout anterior; entradas vencidas são descartadas no load.
+ */
+const PENDING_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * KV em memória — fallback de testnet quando o binding `ORACLE_STATE` não está
@@ -42,8 +88,10 @@ class MemoryKV {
     return !!e;
   }
 
-  async get(key: string): Promise<string | null> {
-    return this.alive(key) ? this.store.get(key)!.v : null;
+  async get(key: string, type?: string): Promise<unknown> {
+    if (!this.alive(key)) return null;
+    const v = this.store.get(key)!.v;
+    return type === "json" ? JSON.parse(v) : v;
   }
 
   async put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> {
@@ -63,6 +111,12 @@ class MemoryKV {
 const memoryState = new MemoryKV();
 let memWarned = false;
 
+/** High-water mark de checkpoint por chain — sobrevive dentro do isolate. */
+const memCheckpoint = new Map<string, bigint>();
+
+/** Timestamp da última escrita do documento por chain (por isolate). */
+const lastPersistAt = new Map<string, number>();
+
 /**
  * Retorna o store efetivo: KV `ORACLE_STATE` quando o binding existe,
  * `MemoryKV` (por isolate) como fallback. Loga warning uma única vez.
@@ -76,7 +130,12 @@ export function stateStore(env: { ORACLE_STATE?: KVNamespace }): KVNamespace {
   return memoryState as unknown as KVNamespace;
 }
 
-export function checkpointKey(chain: string): string {
+export function stateKey(chain: string): string {
+  return `state:${chain}`;
+}
+
+/** Chave do layout anterior — lida apenas quando `state:{chain}` não existe. */
+export function legacyCheckpointKey(chain: string): string {
   return `${chain}:checkpoint`;
 }
 
@@ -84,56 +143,74 @@ export function processedKey(chain: string, queryId: string): string {
   return `${chain}:processed:${queryId}`;
 }
 
-export function pendingKey(chain: string, queryId: string): string {
-  return `pending:${chain}:${queryId}`;
+/**
+ * Carrega o documento `state:{chain}` (1 leitura KV por tick/chain).
+ * Quando ausente, faz fallback para o checkpoint legado `{chain}:checkpoint`
+ * (+1 leitura, somente até a primeira persistência) e descarta pendências
+ * vencidas (>7d). O checkpoint retornado é o máximo entre o persistido e o
+ * high-water mark em memória — evita regressão entre ticks sem escrita.
+ */
+export async function loadChainState(kv: KVNamespace, chain: string): Promise<LoadedChainState> {
+  const doc = (await kv.get(stateKey(chain), "json")) as ChainState | null;
+  let checkpoint = doc?.checkpoint;
+  if (!doc) {
+    checkpoint = (await kv.get(legacyCheckpointKey(chain))) ?? "0";
+  }
+  const now = Date.now();
+  const pending: Record<string, PendingQuery> = {};
+  for (const [qid, q] of Object.entries(doc?.pending ?? {})) {
+    if (q.executeAfter * 1000 >= now - PENDING_STALE_AFTER_MS) pending[qid] = q;
+  }
+  const persisted = BigInt(checkpoint ?? "0");
+  const mem = memCheckpoint.get(chain) ?? 0n;
+  return {
+    state: { checkpoint: persisted.toString(), pending },
+    checkpoint: mem > persisted ? mem : persisted,
+    persistedCheckpoint: persisted,
+    dirty: false,
+  };
 }
 
-/** Lê o checkpoint numérico da chain (0 quando ausente). */
-export async function getCheckpoint(kv: KVNamespace, chain: string): Promise<bigint> {
-  const v = await kv.get(checkpointKey(chain));
-  return v ? BigInt(v) : 0n;
+/** Registra o checkpoint recém-observado (memória + documento do tick). */
+export function noteCheckpoint(loaded: LoadedChainState, value: bigint): void {
+  if (value > loaded.checkpoint) {
+    loaded.checkpoint = value;
+    loaded.state.checkpoint = value.toString();
+  }
 }
 
-export async function setCheckpoint(kv: KVNamespace, chain: string, value: bigint): Promise<void> {
-  await kv.put(checkpointKey(chain), value.toString());
+/**
+ * Persiste `state:{chain}` somente quando necessário: `dirty` (pendências ou
+ * conteúdo mudou) ou checkpoint avançou além do persistido e o intervalo
+ * mínimo de escrita venceu. O high-water mark do isolate é atualizado sempre.
+ * @returns `true` quando uma escrita KV foi emitida.
+ */
+export async function flushChainState(kv: KVNamespace, chain: string, loaded: LoadedChainState): Promise<boolean> {
+  memCheckpoint.set(chain, loaded.checkpoint);
+  const intervalElapsed = Date.now() - (lastPersistAt.get(chain) ?? 0) >= CHECKPOINT_PERSIST_INTERVAL_MS;
+  const checkpointAhead = loaded.checkpoint > loaded.persistedCheckpoint;
+  if (!loaded.dirty && !(intervalElapsed && checkpointAhead)) return false;
+  await kv.put(stateKey(chain), JSON.stringify(loaded.state));
+  lastPersistAt.set(chain, Date.now());
+  return true;
 }
 
 export async function isProcessed(kv: KVNamespace, chain: string, queryId: string): Promise<boolean> {
   return (await kv.get(processedKey(chain, queryId))) !== null;
 }
 
+/**
+ * Grava o marcador de dedupe `{chain}:processed:{qid}` — "done" (30d),
+ * "failed:{attempts}" (30d na última tentativa, 1d nas anteriores). A saída
+ * da pendência não usa `delete`: é resolvida na regravação do documento.
+ */
 export async function markProcessed(kv: KVNamespace, chain: string, queryId: string, ok: boolean, attempts: number): Promise<void> {
   const key = processedKey(chain, queryId);
-  if (ok) {
-    await kv.put(key, "done", { expirationTtl: 60 * 60 * 24 * 30 });
-    await kv.delete(pendingKey(chain, queryId));
-    return;
-  }
-  if (attempts >= MAX_ATTEMPTS) {
-    await kv.put(key, `failed:${attempts}`, { expirationTtl: 60 * 60 * 24 * 30 });
-    await kv.delete(pendingKey(chain, queryId));
+  if (ok || attempts >= MAX_ATTEMPTS) {
+    await kv.put(key, ok ? "done" : `failed:${attempts}`, { expirationTtl: 60 * 60 * 24 * 30 });
     return;
   }
   await kv.put(key, `failed:${attempts}`, { expirationTtl: 60 * 60 * 24 });
-}
-
-export async function putPending(kv: KVNamespace, q: PendingQuery): Promise<void> {
-  await kv.put(pendingKey(q.chain, q.queryId), JSON.stringify(q), { expirationTtl: 60 * 60 * 24 * 7 });
-}
-
-/** Lista queries pendentes de uma chain (paginação KV completa). */
-export async function listPending(kv: KVNamespace, chain: string): Promise<PendingQuery[]> {
-  const out: PendingQuery[] = [];
-  let cursor: string | undefined;
-  do {
-    const page: KVNamespaceListResult<unknown> = await kv.list({ prefix: `pending:${chain}:`, cursor });
-    for (const k of page.keys) {
-      const raw = await kv.get(k.name);
-      if (raw) out.push(JSON.parse(raw) as PendingQuery);
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  return out;
 }
 
 export { MAX_ATTEMPTS };

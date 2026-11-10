@@ -8,7 +8,7 @@
  */
 import type { Env } from "./chains/OracleChain";
 import { runCycle } from "./services/orchestrator";
-import { listPending, getCheckpoint, stateStore } from "./services/state";
+import { loadChainState, stateStore } from "./services/state";
 import { buildAdapters } from "./services/orchestrator";
 import { logger } from "./utils/logger";
 
@@ -53,12 +53,15 @@ export default {
       }
       if (url.pathname === "/status") {
         const adapters = buildAdapters(env);
+        const kv = stateStore(env);
         const chains = [];
         for (const a of adapters) {
+          // 1 leitura por chain — documento coalescido (checkpoint + pendentes).
+          const loaded = await loadChainState(kv, a.id);
           chains.push({
             chain: a.id,
-            checkpoint: (await getCheckpoint(stateStore(env), a.id)).toString(),
-            pending: (await listPending(stateStore(env), a.id)).length,
+            checkpoint: loaded.checkpoint.toString(),
+            pending: Object.keys(loaded.state.pending).length,
           });
         }
         return respond({
