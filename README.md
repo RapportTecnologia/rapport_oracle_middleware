@@ -53,5 +53,6 @@ O QR Code é gerado por `scripts/generate_pix_qrcode.py` (raiz do monorepo).
 |---|---|---|
 | 2026-11-07 | 0.1.0 | Estrutura inicial do subprojeto |
 | 2026-11-08 | 0.1.1 | Seção de doação via Pix com QR Code |
+| 2026-11-10 | 0.1.2 | Otimização de operações KV para o plano Free (#10) |
 
 ![footer](https://capsule-render.vercel.app/api?type=waving&color=gradient&height=100&section=footer&animation=twinkling)
