@@ -31,14 +31,18 @@ Oraclize/Provable.
 | `src/services/orchestrator.ts` | Ciclo: coleta→agenda→resolve→callback→checkpoint |
 | `src/services/resolver.ts` | DSL `json(url).path` + fetch com size cap/timeout |
 | `src/services/proof.ts` | Prova ECDSA (EVM) / ed25519 (Solana, Stellar) |
-| `src/services/state.ts` | KV `ORACLE_STATE`: checkpoints, pending, processed |
+| `src/services/state.ts` | KV `ORACLE_STATE`: doc `state:{chain}` (checkpoint+pending) + marcadores `processed` |
 
 ## Decisões
 
 - **Cron 1 min** — Workers não mantêm WebSocket de escuta; polling de logs
   (`eth_getLogs`, `getEvents`, `getProgramAccounts`). `delay` é honrado com
   granularidade de ~1 min (upgrade futuro: Durable Object + alarm).
-- **KV** para deduplicação e agendamento — suficiente na v1.
+- **KV** para deduplicação e agendamento — suficiente na v1. Estado
+  coalescido por chain em `state:{chain}` (1 leitura/tick, 1 escrita só em
+  mudança, sem `list`/`delete` no hot path) e checkpoint persistido com
+  throttle de 15 min — orçamento compatível com o plano Free
+  (issue #10). Dedupe durável em `{chain}:processed:{qid}` (TTL 1–30d).
 - **Callback direto ao consumidor** (modelo Provable): o relayer chama
   `__callback` e o consumidor valida `cbAddress` on-chain.
 - **Proof v1** = assinatura do relayer sobre `keccak256(qid,result,consumer)`
@@ -54,5 +58,6 @@ Oraclize/Provable.
 | Data | Versão | Descrição |
 |---|---|---|
 | 2026-11-08 | 0.1.0 | Documentação inicial |
+| 2026-11-10 | 0.1.1 | Estado KV coalescido + throttling de checkpoint (plano Free) |
 
 ![footer](https://capsule-render.vercel.app/api?type=waving&color=gradient&height=100&section=footer&animation=twinkling)
