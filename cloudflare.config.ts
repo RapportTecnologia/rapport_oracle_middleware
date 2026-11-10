@@ -7,35 +7,30 @@
  *       --secrets-file` / `npx wrangler secret put` (produção).
  * @author Carlos Delfino <consultoria@carlosdelfino.eti.br>
  */
-const config = {
-  // Nome deve casar com o escopo do API token restrito ("midleware" sem o 2º 'd').
-  name: "rapport-oracle-midleware",
-  main: "src/index.ts",
-  compatibility_date: "2026-11-08",
-  // Cron: granularidade mínima de 1 minuto no Workers — o `delay` da query é
-  // honrado com essa precisão (ver docs/arquitetura.md).
-  triggers: {
-    crons: ["* * * * *"],
-  },
-  kv_namespaces: [
-    {
-      binding: "ORACLE_STATE",
-      // Namespace "rapport_oracle" provisionado no dashboard (token sem escopo KV).
-      id: "9972eb49b5c1450d921c29565c768d0f",
-    },
-  ],
-  observability: {
-    enabled: true,
-    traces: { enabled: true, head_sampling_rate: 1 },
-  },
-  // Não colocar segredos aqui — usar `secrets`/.dev.vars.
-  vars: {
-    EVM_CHAIN_ID: "80002",
-    CHAINS_ENABLED: "evm",
-    ORACLE_POLL_MAX_BLOCK_RANGE: "5000",
-    HTTP_FETCH_MAX_BYTES: "1048576",
-    HTTP_FETCH_TIMEOUT_MS: "15000",
-  },
-};
+import { bindings, defineConfig, triggers } from "cf/config";
 
-export default config;
+export default defineConfig({
+  worker: {
+    // Nome deve casar com o escopo do API token restrito ("midleware" sem o 2º 'd').
+    name: "rapport-oracle-midleware",
+    entrypoint: "./src/index.ts",
+    compatibilityDate: "2026-11-08",
+    env: {
+      // Namespace "rapport_oracle" provisionado no dashboard (token sem escopo KV).
+      ORACLE_STATE: bindings.kv({ id: "9972eb49b5c1450d921c29565c768d0f" }),
+      // Não colocar segredos aqui — usar `--secrets-file`/.dev.vars.
+      EVM_CHAIN_ID: bindings.text("80002"),
+      CHAINS_ENABLED: bindings.text("evm"),
+      ORACLE_POLL_MAX_BLOCK_RANGE: bindings.text("5000"),
+      HTTP_FETCH_MAX_BYTES: bindings.text("1048576"),
+      HTTP_FETCH_TIMEOUT_MS: bindings.text("15000"),
+    },
+    // Cron: granularidade mínima de 1 minuto no Workers — o `delay` da query é
+    // honrado com essa precisão (ver docs/arquitetura.md).
+    triggers: [triggers.scheduled({ schedule: "* * * * *" })],
+    observability: {
+      enabled: true,
+      traces: { persist: true },
+    },
+  },
+});
