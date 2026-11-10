@@ -11,7 +11,10 @@
 - Node 22+ (`nvm use` respeitando `.nvmrc`).
 - `npm install` concluído.
 - Credenciais Cloudflare: `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`
-  no `.env`/`.dev.vars` (ou `cf auth login` interativo).
+  exportadas no ambiente a partir do `.dev.vars` (o `cf` não lê `.dev.vars`
+  para autenticação) ou `cf auth login` interativo.
+- `cloudflare.config.ts` no formato `cf/config` (`defineConfig`, `bindings`,
+  `triggers`) — não usar chaves estilo wrangler (`kv_namespaces`, `vars`).
 - Chaves de relayer nas `.dev.vars` (nunca no código).
 
 ## Desenvolvimento local
@@ -36,7 +39,10 @@ npx cf kv namespace create ORACLE_STATE   # anotar o id retornado
 npx cf deploy --secrets-file .dev.vars    # ou npx wrangler secret put <NOME> --name rapport-oracle-middleware
 
 # 4. Deploy
-npm run deploy             # cf deploy
+npm run deploy             # cf deploy — requer TTY interativo: se o Worker foi
+                           # atualizado pela última vez via script API, o cf pede
+                           # confirmação ("Would you like to continue?") e aborta
+                           # em modo não-interativo (strict implícito).
 
 # 5. Verificar
 curl https://rapport-oracle-middleware.<conta>.workers.dev/health
@@ -60,5 +66,6 @@ npx wrangler tail rapport-oracle-middleware   # logs em tempo real
 | Data | Versão | Descrição |
 |---|---|---|
 | 2026-11-08 | 0.1.0 | Documentação inicial |
+| 2026-11-10 | 0.1.1 | Migração para formato `cf/config` + nota sobre modo strict |
 
 ![footer](https://capsule-render.vercel.app/api?type=waving&color=gradient&height=100&section=footer&animation=twinkling)
